@@ -13,10 +13,14 @@
 #include "../inc/prefetcher.h"
 #define MAX_REFERENCES 10
 
+struct reference {
+	int score;
+  	struct reference *pointer;
+};
+
 struct dir_node {
 	unsigned long long int dir;
-        int score;
-        struct dir_node **next_dir;
+	struct reference ref_list[MAX_REFERENCES];
 };	
 
 int last_addr=-1;
@@ -24,12 +28,6 @@ int last_addr=-1;
 void l2_prefetcher_initialize(int cpu_num)
 {
   printf("No Prefetching\n");
-  dir_node a;
-  a->next_dir = malloc(sizeof(dir_node)*MAX_REFERENCES);
-  for(i=0;i<MAX_REFERENCES;++i){
-	dir_node b;
-        a.next_dir[i] = &b;
-  }
   // you can inspect these knob values from your code to see which configuration you're runnig in
   printf("Knobs visible from prefetcher: %d %d %d\n", knob_scramble_loads, knob_small_llc, knob_low_bandwidth);
 }
