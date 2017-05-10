@@ -15,7 +15,7 @@
 
 struct reference {
 	int score;
-  	struct reference *pointer;
+  	struct dir_node *pointer;
 };
 
 struct dir_node {
