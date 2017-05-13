@@ -10,8 +10,11 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include "../inc/prefetcher.h"
 
+long long int stride=0;
+long long last_addr=-1;
 void l2_prefetcher_initialize(int cpu_num)
 {
   printf("No Prefetching\n");
@@ -22,7 +25,19 @@ void l2_prefetcher_initialize(int cpu_num)
 void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned long long int ip, int cache_hit)
 {
   // uncomment this line to see all the information available to make prefetch decisions
-  //printf("(0x%llx 0x%llx %d %d %d) ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
+ // printf("(%d) ",(int) (addr-last_addr)); 
+  //printf("(0x%llx 0x%llx %d %d %d)\n ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
+  if(last_addr==-1) last_addr=addr;
+  else {
+	stride = llabs(addr-((long long)last_addr));
+	if(stride < PAGE_SIZE && !cache_hit && get_l2_read_queue_occupancy(cpu_num) < 32 && get_l2_mshr_occupancy(cpu_num)<16 ){
+		 printf("(%lli) \n ",stride); 
+		 int succ = l2_prefetch_line(cpu_num,addr,addr+stride,FILL_L2);
+		 if(!succ)
+			printf("Prefetch have fail %i\n",succ);
+	}
+ 	last_addr = addr;
+  }
 }
 
 void l2_cache_fill(int cpu_num, unsigned long long int addr, int set, int way, int prefetch, unsigned long long int evicted_addr)
