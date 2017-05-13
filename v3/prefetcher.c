@@ -12,21 +12,24 @@
 
 //#include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <math.h>
 #include "../inc/prefetcher.h"
 #include "instrumentation.h"
 
 //index table size
-#define ITS 16
-typedef struct {
+#define ITS 512
+typedef struct itf_struct{
+  unsigned long long addr;
   unsigned int index; //index to the history
 } index_table_field;
 
 //history buffer size
-#define HBS 64
-typedef struct {
+#define HBS 512
+typedef struct hf_struct{
   unsigned long long addr;
   unsigned int index; //index to the history
+  bool valid_index;
 } history_field;
 
 static const unsigned int CACHE_EXP = log2(CACHE_LINE_SIZE);
@@ -59,23 +62,32 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
   L2_PREFETCH_OPERATE_INSTRUMENTED(cpu_num,addr,ip,cache_hit);
 
   if(!cache_hit){
-
 	history_field new_hfield;
+	new_hfield.valid_index = false;
 	new_hfield.addr = addr;//>>(CACHE_EXP); //address are at level of line cache
-	history_buffer[history_head] = new_hfield;
-	history_head = (history_head-1)%HBS;
-
-	unsigned int index = (addr>>(CACHE_EXP)) & (ITS-1);
-	//index table points me to the last miss with this index maping?
+	
+	//indexing by line address
+	unsigned int index = (addr>>(CACHE_EXP+1)) & (ITS-1);
 	index_table_field ifield = index_table[index];
-	history_field history_field = history_buffer[ifield.index];
+	index_table_field new_ifield;
+	new_ifield.addr = addr;
+	new_ifield.index = (history_head);
+	index_table[index] = new_ifield;
 
 	if(ifield.addr == new_hfield.addr){
+	   new_hfield.index = (history_head);
+	   new_hfield.valid_index = true;
 	   //search prefetch 
 	   unsigned int npa = (ifield.index+1)%HBS;
 	   history_field next = history_buffer[npa];
+	   printf("prefetch\n");
 	   L2_PREFETCH_LINE(cpu_num,addr,next.addr,FILL_L2);
+	} else { 
+		//printf("Expecting %llu\n",ifield.addr);
+		//printf("Found %llu\n",new_hfield.addr);
 	}
+	history_buffer[history_head] = new_hfield;
+	history_head = (history_head+1)%HBS;
 
   }
  
