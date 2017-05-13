@@ -1,0 +1,57 @@
+Running test missratio.py
+Running trace gcc_trace2.dpc.gz
+Misses: 173574
+Hits:   2963
+Access: 176537
+----------
+Hit ratio: 0.0167840169483
+
+Running trace GemsFDTD_trace2.dpc.gz
+Misses: 296
+Hits:   5103
+Access: 5399
+----------
+Hit ratio: 0.945175032413
+
+Running trace lbm_trace2.dpc.gz
+Misses: 36664
+Hits:   9
+Access: 36673
+----------
+Hit ratio: 0.000245412156082
+
+Running trace leslie3d_trace2.dpc.gz
+Misses: 46456
+Hits:   60618
+Access: 107074
+----------
+Hit ratio: 0.566131834059
+
+Running trace libquantum_trace2.dpc.gz
+Misses: 3088
+Hits:   23368
+Access: 26456
+----------
+Hit ratio: 0.883277895373
+
+Running trace mcf_trace2.dpc.gz
+Misses: 237365
+Hits:   81885
+Access: 319250
+----------
+Hit ratio: 0.256491777604
+
+Running trace milc_trace2.dpc.gz
+Misses: 60510
+Hits:   0
+Access: 60510
+----------
+Hit ratio: 0.0
+
+Running trace omnetpp_trace2.dpc.gz
+Misses: 33037
+Hits:   4588
+Access: 37625
+----------
+Hit ratio: 0.121940199336
+
