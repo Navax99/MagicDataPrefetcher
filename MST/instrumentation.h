@@ -54,8 +54,9 @@ void l2_prefetcher_initialize_instrumented(){
   }
 }
 
-void l2_prefetch_line_instrumented(unsigned long long int cycles, int cpu_num, unsigned long long int base_addr, unsigned long long int pf_addr, int fill_level){
+int l2_prefetch_line_instrumented(unsigned long long int cycles, int cpu_num, unsigned long long int base_addr, unsigned long long int pf_addr, int fill_level){
   fprintf(traceFile,"%llu:%i:%i:%llu:%llu:%i\n",cycles,PREFETCH_LINE_CODE,cpu_num,base_addr,pf_addr,fill_level);
+  return l2_prefetch_line(cpu_num, base_addr,  pf_addr, fill_level);
 }
 void l2_prefetcher_operate_instrumented(unsigned long long int cycles,int cpu_num, unsigned long long int addr, unsigned long long int ip, int cache_hit){
   fprintf(traceFile,"%llu:%i:%i:%llu:%llu:%i\n",cycles,PREFETCH_OPERATE_CODE,cpu_num, addr, ip, cache_hit);

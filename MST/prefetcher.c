@@ -18,9 +18,8 @@
 #include "instrumentation.h"
 
 
-
 //history buffer size
-#define HBS 256
+#define HBS (256)
 #define SLSIZE 4
 
 typedef struct sl_struct{
@@ -36,12 +35,16 @@ typedef struct hf_struct{
 static const unsigned int CACHE_EXP = log2(CACHE_LINE_SIZE);
 
 history_field     history_buffer[HBS];
-unsigned int history_head = 1;
+unsigned int history_head = 0;
 unsigned int history_tail = 0;
+bool first_entry = true;
+
+unsigned long long int longest_length =0;
+long long int longest_stride =0;
 
 void add_entry(history_field h){
 	history_buffer[history_head] = h;
-	if(history_head == history_head){
+	if(history_tail == (history_head+1)%HBS ){
 		history_tail = (history_tail+1)%HBS;
 	}
 	history_head = (history_head+1)%HBS;
@@ -64,10 +67,12 @@ void l2_prefetcher_initialize(int cpu_num)
 		for(int j = 0 ; j < SLSIZE ; ++j){
 			history_buffer[i].sl[j].stride = 0;
 			history_buffer[i].sl[j].length = 0;
-  	}
+		}
   }
 }
 
+long long int last_stride = 0;
+unsigned int total_failed_misses = 0;
 // This function is called once for each Mid Level Cache read, and is the entry point for participants' prefetching algorithms.
 // addr - the byte address of the current cache read
 // ip - the instruction pointer (program counter) of the instruction that caused the current cache read
@@ -76,31 +81,41 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 {
   L2_PREFETCH_OPERATE_INSTRUMENTED(cpu_num,addr,ip,cache_hit);
 
+  
+//printf("Call with hit %i\n",cache_hit);
   if(!cache_hit){
 		history_field new_hfield;
 		new_hfield.addr = addr>>(CACHE_EXP); //address are at level of line cache
 		init_field(&new_hfield);
-		
-		for(unsigned int i = history_tail ; i != history_head ; i = (i+1)%HBS ){
+
+		//iterate from the newest to the oldest (Step 1)
+		for(unsigned int i = history_head ; i != history_tail ; i = (i-1)%HBS ){
+
 			history_field hbf = history_buffer[i];
-			long long stride = new_hfield.addr - hbf.addr;
-			
+			long long stride = ((long long)new_hfield.addr) - ((long long)hbf.addr);
 			bool found = false;
-			//check for all stride fields
+			//check for all stride fields 
 			for(unsigned int ii = 0 ; ii < SLSIZE && !found ; ++ii){
-				if(hbf.sl[ii].stride == stride && hbf.sl[ii].length > 0){
+				if(hbf.sl[ii].stride == stride && hbf.sl[ii].length > 0 && hbf.sl[ii].stride > 0){
+					//printf("Find stream with stride %lli and length %llu\n",stride,hbf.sl[ii].length);
+					
 					new_hfield.sl[ii].stride = stride;
 					new_hfield.sl[ii].length = hbf.sl[ii].length + 1;
 					found = true;
 				}
 			}
-				
+			//else ( step 1)
 		  if(!found) {
-				for(unsigned int j = i ; j != history_head ; j = (j+1)%HBS ){
+		  		//Step 2, seach a new stream
+				for(unsigned int j = (i-1)%HBS  ; j != history_tail ; j = (j-1)%HBS ){
 					history_field hbfj = history_buffer[j];
 					long long stridej = hbf.addr - hbfj.addr;
-					if(stride == stridej){
+					
+					//if it finds a stride, we have a new stream
+					if(stride == stridej && stridej > 0 && stride > 0){
+						
 						bool found2 = false;
+						//search for a slot
 						for(unsigned int jj = 0 ; jj < SLSIZE && !found2 ; ++jj){
 							if(new_hfield.sl[jj].stride == 0){
 								new_hfield.sl[jj].stride = stride;
@@ -116,11 +131,14 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 					}
 				}
 		  }
-  	}
-  			
-	
+		}
+  		
+  		if(first_entry) first_entry = false;
+		//printf("Head %u tail %u\n",history_head,history_tail);
 		add_entry(new_hfield);
-		
+		history_field h = new_hfield;
+		//if(h.sl[0].stride > 0)
+		//	printf("addr:%llu s0:%lli l0:%llu s1:%lli l1:%llu s2:%lli l2:%llu s3:%lli l3:%llu\n",h.addr,h.sl[0].stride,h.sl[0].length,h.sl[1].stride,h.sl[1].length,h.sl[2].stride,h.sl[2].length,h.sl[3].stride,h.sl[3].length);
 		long long stride = 0;
 		unsigned long long length = 0;
 		for(unsigned int i = 0 ; i < SLSIZE ; ++i){
@@ -129,17 +147,41 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 				length = new_hfield.sl[i].length;
 			}
 		}
-		L2_PREFETCH_LINE(cpu_num,addr,addr+stride,FILL_L2);
-		L2_PREFETCH_LINE(cpu_num,addr,addr+2*stride,FILL_L2);
-	  L2_PREFETCH_LINE(cpu_num,addr,addr+3*stride,FILL_L2);
-	  L2_PREFETCH_LINE(cpu_num,addr,addr+4*stride,FILL_L2);
-	
-		//for(unsigned int i = 0 ; i < length ; ++i ){
 
-			//saddr += stride;
-		//}
+		if(longest_length < length){
+			printf("OLD length %llu stride %lli\n",longest_length,longest_stride);
+			longest_length = length;
+			longest_stride = stride;
+			printf("NEW length %llu stride %lli\n",longest_length,longest_stride);
+		}
+		
+		
+		if(length > 0){
+		//	printf("Prefeting with stride %lli \n",longest_stride);
+			if(get_l2_mshr_occupancy(0) > 8){
+				printf("Prefeting with stride %lli\n",longest_stride);
+	  			L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride,FILL_LLC);
+	  			L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*2,FILL_LLC);
+	  			L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*3,FILL_LLC);
+	  			L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*4,FILL_LLC);
+	  		} else {
+	  			int err = L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride,FILL_L2);
+	  			 err += L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*2,FILL_L2);
+	  			 err += L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*3,FILL_L2);
+	  			 err += L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*4,FILL_L2);
+	  			
+	  			total_failed_misses+=err;
+	  			
+	  		}
+
+		}
+
 	   
-  }		
+  }
+  if(last_stride > 0){
+  	//printf("Prefetching stride %lli\n",last_stride);
+  
+  }
 }
 
 
@@ -157,13 +199,13 @@ void l2_prefetcher_heartbeat_stats(int cpu_num)
 	for(int i = 0 ; i < HBS ; ++i){
 		if(history_buffer[i].addr > 0){
 			history_field h = history_buffer[i];
-			//printf("addr: %llu s0: %ll l0: %llu s1: %ll l1: %llu s2: %ll l2: %llu s3: %ll l3: %llu \n",history_buffer[i].addr,h.sl[0].stride,h.sl[0].length,h.sl[1].stride,h.sl[1].length,h.sl[2].stride,h.sl[2].length,h.sl[3].stride,h.sl[3].length);
-			printf("addr:%llu-s0:%ll-l0:%llu-s1:%ll-l1:%llu-s2:%ll-l2:%llu-s3:%ll-l3:%llu\n",history_buffer[i].addr,h.sl[0].stride,h.sl[0].length,h.sl[1].stride,h.sl[1].length,h.sl[2].stride,h.sl[2].length,h.sl[3].stride,h.sl[3].length);
+			
+		//	printf("addr:%llu s0:%lli l0:%llu s1:%lli l1:%llu s2:%lli l2:%llu s3:%lli l3:%llu\n",history_buffer[i].addr,h.sl[0].stride,h.sl[0].length,h.sl[1].stride,h.sl[1].length,h.sl[2].stride,h.sl[2].length,h.sl[3].stride,h.sl[3].length);
 		}
 	}
-	printf("==========");
-	printf("============");
-	printf("==========");
+	//printf("==========\n");
+	//printf("============\n");
+	//printf("==========\n");
 }
 
 void l2_prefetcher_warmup_stats(int cpu_num)
@@ -174,4 +216,6 @@ void l2_prefetcher_warmup_stats(int cpu_num)
 void l2_prefetcher_final_stats(int cpu_num)
 {
   L2_PREFETCH_FINAL_STATS_INSTRUMENTED
+  printf("length %llu stride %lli\n",longest_length,longest_stride);
+  printf("faild misses %u",total_failed_misses);
 }

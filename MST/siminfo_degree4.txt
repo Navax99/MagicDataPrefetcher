@@ -1,0 +1,65 @@
+Running all test
+Running trace GemsFDTD_trace2.dpc.gz
+Simulation Instructions: 100000000
+Warmup Instructions: 10000000
+Scramble loads OFF
+Using 1MB Last Level Cache
+Using 12.8 GB/s DRAM bandwidth
+Simulation complete. Instructions retired: 3099758 Cycles elapsed: 899401 IPC: 3.446469
+
+Running trace gcc_trace2.dpc.gz
+Simulation Instructions: 100000000
+Warmup Instructions: 10000000
+Scramble loads OFF
+Using 1MB Last Level Cache
+Using 12.8 GB/s DRAM bandwidth
+Simulation complete. Instructions retired: 3099757 Cycles elapsed: 9907341 IPC: 0.312875
+
+Running trace lbm_trace2.dpc.gz
+Simulation Instructions: 100000000
+Warmup Instructions: 10000000
+Scramble loads OFF
+Using 1MB Last Level Cache
+Using 12.8 GB/s DRAM bandwidth
+Simulation complete. Instructions retired: 3099754 Cycles elapsed: 1959541 IPC: 1.581878
+
+Running trace leslie3d_trace2.dpc.gz
+Simulation Instructions: 100000000
+Warmup Instructions: 10000000
+Scramble loads OFF
+Using 1MB Last Level Cache
+Using 12.8 GB/s DRAM bandwidth
+Simulation complete. Instructions retired: 3099757 Cycles elapsed: 2163957 IPC: 1.432449
+
+Running trace libquantum_trace2.dpc.gz
+Simulation Instructions: 100000000
+Warmup Instructions: 10000000
+Scramble loads OFF
+Using 1MB Last Level Cache
+Using 12.8 GB/s DRAM bandwidth
+Simulation complete. Instructions retired: 3099757 Cycles elapsed: 956223 IPC: 3.241667
+
+Running trace mcf_trace2.dpc.gz
+Simulation Instructions: 100000000
+Warmup Instructions: 10000000
+Scramble loads OFF
+Using 1MB Last Level Cache
+Using 12.8 GB/s DRAM bandwidth
+Simulation complete. Instructions retired: 3099757 Cycles elapsed: 8802244 IPC: 0.352155
+
+Running trace milc_trace2.dpc.gz
+Simulation Instructions: 100000000
+Warmup Instructions: 10000000
+Scramble loads OFF
+Using 1MB Last Level Cache
+Using 12.8 GB/s DRAM bandwidth
+Simulation complete. Instructions retired: 3099754 Cycles elapsed: 2471781 IPC: 1.254057
+
+Running trace omnetpp_trace2.dpc.gz
+Simulation Instructions: 100000000
+Warmup Instructions: 10000000
+Scramble loads OFF
+Using 1MB Last Level Cache
+Using 12.8 GB/s DRAM bandwidth
+Simulation complete. Instructions retired: 3099755 Cycles elapsed: 1387277 IPC: 2.234417
+
