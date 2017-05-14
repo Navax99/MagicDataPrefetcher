@@ -20,6 +20,7 @@
 
 //history buffer size
 #define HBS (256)
+#define DBS 128
 #define SLSIZE 4
 
 typedef struct sl_struct{
@@ -34,10 +35,18 @@ typedef struct hf_struct{
 
 static const unsigned int CACHE_EXP = log2(CACHE_LINE_SIZE);
 
+unsigned int prefetch_degree = 1;
+
+#define PENALIZER_MAX_RATE 3
+unsigned long long degree_buffer[DBS];
+unsigned int degree_head = 0;
+unsigned int degree_tail = 0;
+unsigned int penalizer_rate = 0;
+
 history_field     history_buffer[HBS];
 unsigned int history_head = 0;
 unsigned int history_tail = 0;
-bool first_entry = true;
+//bool first_entry = true;
 
 unsigned long long int longest_length =0;
 long long int longest_stride =0;
@@ -51,12 +60,22 @@ void add_entry(history_field h){
 
 }
 
+void add_degree_entry(unsigned long long addr){
+	degree_buffer[degree_head] = addr;
+	if(degree_tail == (degree_head+1)%DBS){
+		degree_tail = (degree_tail+1)%DBS;
+	}
+	degree_head = (degree_head+1)%DBS;
+
+}
+
 void init_field(history_field* hf){
 	for(unsigned int i = 0 ; i < SLSIZE ; ++i){
 		hf->sl[i].length = 0;
 		hf->sl[i].stride = 0;
 	}
 }
+
 
 void l2_prefetcher_initialize(int cpu_num)
 {
@@ -80,9 +99,31 @@ unsigned int total_failed_misses = 0;
 void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned long long int ip, int cache_hit)
 {
   L2_PREFETCH_OPERATE_INSTRUMENTED(cpu_num,addr,ip,cache_hit);
-
   
-//printf("Call with hit %i\n",cache_hit);
+  //Degree control code
+  bool found_degree  = false;
+  for (unsigned int i = degree_head; i != degree_tail && !found_degree ; i = (i-1)%DBS) {
+  		if(addr>>(CACHE_EXP)==degree_buffer[i]){
+  			if(prefetch_degree == 1) prefetch_degree=2;
+  			else if(prefetch_degree == 2) prefetch_degree=4;
+  			found_degree = true;
+  		}
+  	//	printf("degree loop\n");
+  }
+  
+  if(!found_degree){
+  	++penalizer_rate;
+  	if(penalizer_rate == PENALIZER_MAX_RATE){
+  		if(prefetch_degree == 4) prefetch_degree=2;
+  		else if(prefetch_degree == 2) prefetch_degree=1;
+  		penalizer_rate = 0;
+  	}
+  } else {
+  	penalizer_rate = 0;
+  }
+  //////////////////////////
+  
+  
   if(!cache_hit){
 		history_field new_hfield;
 		new_hfield.addr = addr>>(CACHE_EXP); //address are at level of line cache
@@ -133,7 +174,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 		  }
 		}
   		
-  		if(first_entry) first_entry = false;
+  		//if(first_entry) first_entry = false;
 		//printf("Head %u tail %u\n",history_head,history_tail);
 		add_entry(new_hfield);
 		history_field h = new_hfield;
@@ -160,18 +201,18 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 		//	printf("Prefeting with stride %lli \n",longest_stride);
 			if(get_l2_mshr_occupancy(0) > 8){
 				printf("Prefeting with stride %lli\n",longest_stride);
-	  			L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride,FILL_LLC);
-	  			L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*2,FILL_LLC);
-	  			L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*3,FILL_LLC);
-	  			L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*4,FILL_LLC);
+				for (unsigned int i = 1; i <= prefetch_degree; i++) {
+					L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*i,FILL_LLC);
+					//printf
+				}
 	  		} else {
-	  			int err = L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride,FILL_L2);
-	  			 err += L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*2,FILL_L2);
-	  			 err += L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*3,FILL_L2);
-	  			 err += L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*4,FILL_L2);
+	  			for (unsigned int i = 1; i <= prefetch_degree; i++) {
+					L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*i,FILL_L2);
+					add_degree_entry(((unsigned long long int)(addr+CACHE_LINE_SIZE*longest_stride*i)) >> CACHE_EXP);
+				//	printf("Prefetch degree\n");
+				}
 	  			
-	  			total_failed_misses+=err;
-	  			
+	  			//total_failed_misses+=err;
 	  		}
 
 		}
