@@ -37,6 +37,7 @@ static const unsigned int CACHE_EXP = log2(CACHE_LINE_SIZE);
 
 unsigned int prefetch_degree = 1;
 
+
 #define PENALIZER_MAX_RATE 3
 unsigned long long degree_buffer[DBS];
 unsigned int degree_head = 0;
@@ -100,19 +101,18 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 {
   L2_PREFETCH_OPERATE_INSTRUMENTED(cpu_num,addr,ip,cache_hit);
   
-  //Degree control code
+  //Degree control code. Check if the accesed line was prefeched
   bool found_degree  = false;
   for (unsigned int i = degree_head; i != degree_tail && !found_degree ; i = (i-1)%DBS) {
   		if(addr>>(CACHE_EXP)==degree_buffer[i]){
-  			//if(prefetch_degree == 1) prefetch_degree=2;
-  			//else if(prefetch_degree == 2) prefetch_degree=4;
   			found_degree = true;
   		}
  
   }
   
+  //Select a degree grade
   if(!found_degree && !cache_hit){
-	penalizer_rate = 0;
+		penalizer_rate = 0;
   } else if(!found_degree && cache_hit) {
   	//penalizer_rate = 0;
   } else if(found_degree && !cache_hit){
@@ -135,23 +135,23 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 		new_hfield.addr = addr>>(CACHE_EXP); //address are at level of line cache
 		init_field(&new_hfield);
 
-		//iterate from the newest to the oldest (Step 1)
+		//iterate from the newest to the oldest in the history buffer (Step 1)
 		for(unsigned int i = history_head ; i != history_tail ; i = (i-1)%HBS ){
 
 			history_field hbf = history_buffer[i];
 			long long stride = ((long long)new_hfield.addr) - ((long long)hbf.addr);
 			bool found = false;
-			//check for all stride fields 
+			//check for all stride fields searching for a common stream
 			for(unsigned int ii = 0 ; ii < SLSIZE && !found ; ++ii){
 				if(hbf.sl[ii].stride == stride && hbf.sl[ii].length > 0 && hbf.sl[ii].stride > 0){
-					//printf("Find stream with stride %lli and length %llu\n",stride,hbf.sl[ii].length);
 					
 					new_hfield.sl[ii].stride = stride;
 					new_hfield.sl[ii].length = hbf.sl[ii].length + 1;
 					found = true;
 				}
 			}
-			//else ( step 1)
+		   
+		   //If there's not a common stream, try to create a new one
 		  if(!found) {
 		  		//Step 2, seach a new stream
 				for(unsigned int j = (i-1)%HBS  ; j != history_tail ; j = (j-1)%HBS ){
@@ -170,22 +170,16 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 								found2 = true;
 							}
 						}
-						/*if(!found2){
-								new_hfield.sl[0].stride = stride;
-								new_hfield.sl[0].length = 1;
-						}*/
 						break;
 					}
 				}
 		  }
 		}
   		
-  		//if(first_entry) first_entry = false;
-		//printf("Head %u tail %u\n",history_head,history_tail);
+  		//add miss address to the buffer
 		add_entry(new_hfield);
-		history_field h = new_hfield;
-		//if(h.sl[0].stride > 0)
-		//	printf("addr:%llu s0:%lli l0:%llu s1:%lli l1:%llu s2:%lli l2:%llu s3:%lli l3:%llu\n",h.addr,h.sl[0].stride,h.sl[0].length,h.sl[1].stride,h.sl[1].length,h.sl[2].stride,h.sl[2].length,h.sl[3].stride,h.sl[3].length);
+		//history_field h = new_hfield;
+		
 		long long stride = 0;
 		unsigned long long length = 0;
 		for(unsigned int i = 0 ; i < SLSIZE ; ++i){
@@ -195,40 +189,29 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 			}
 		}
 
-		if(longest_length < length){
-			printf("OLD length %llu stride %lli\n",longest_length,longest_stride);
+	  if(longest_length < length){
 			longest_length = length;
 			longest_stride = stride;
-			printf("NEW length %llu stride %lli\n",longest_length,longest_stride);
 		}
 		
-		
+		//if there is a valid stream, take the longest stream of the history and prefetch it
 		if(length > 0){
-		//	printf("Prefeting with stride %lli \n",longest_stride);
 			if(get_l2_mshr_occupancy(0) > 8){
-				printf("Prefeting with stride %lli\n",longest_stride);
 				for (unsigned int i = 1; i <= prefetch_degree; i++) {
 					L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*i,FILL_LLC);
-					//printf
 				}
-	  		} else {
+	  	} else {
 	  			for (unsigned int i = 1; i <= prefetch_degree; i++) {
-					L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*i,FILL_L2);
-					add_degree_entry(((unsigned long long int)(addr+CACHE_LINE_SIZE*longest_stride*i)) >> CACHE_EXP);
-				//	printf("Prefetch degree\n");
-				}
-	  			
-	  			//total_failed_misses+=err;
-	  		}
+						L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*i,FILL_L2);
+						add_degree_entry(((unsigned long long int)(addr+CACHE_LINE_SIZE*longest_stride*stride*i)) >> CACHE_EXP);
+					}
+	  	}
 
 		}
 
 	   
   }
-  if(last_stride > 0){
-  	//printf("Prefetching stride %lli\n",last_stride);
-  
-  }
+
 }
 
 
@@ -243,13 +226,13 @@ void l2_cache_fill(int cpu_num, unsigned long long int addr, int set, int way, i
 
 void l2_prefetcher_heartbeat_stats(int cpu_num)
 {
-	for(int i = 0 ; i < HBS ; ++i){
+	/*for(int i = 0 ; i < HBS ; ++i){
 		if(history_buffer[i].addr > 0){
 			history_field h = history_buffer[i];
 			
 		//	printf("addr:%llu s0:%lli l0:%llu s1:%lli l1:%llu s2:%lli l2:%llu s3:%lli l3:%llu\n",history_buffer[i].addr,h.sl[0].stride,h.sl[0].length,h.sl[1].stride,h.sl[1].length,h.sl[2].stride,h.sl[2].length,h.sl[3].stride,h.sl[3].length);
 		}
-	}
+	}*/
 	//printf("==========\n");
 	//printf("============\n");
 	//printf("==========\n");
@@ -263,6 +246,6 @@ void l2_prefetcher_warmup_stats(int cpu_num)
 void l2_prefetcher_final_stats(int cpu_num)
 {
   L2_PREFETCH_FINAL_STATS_INSTRUMENTED
-  printf("length %llu stride %lli\n",longest_length,longest_stride);
-  printf("faild misses %u",total_failed_misses);
+ // printf("length %llu stride %lli\n",longest_length,longest_stride);
+ // printf("faild misses %u",total_failed_misses);
 }
