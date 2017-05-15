@@ -104,21 +104,27 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
   bool found_degree  = false;
   for (unsigned int i = degree_head; i != degree_tail && !found_degree ; i = (i-1)%DBS) {
   		if(addr>>(CACHE_EXP)==degree_buffer[i]){
-  			if(prefetch_degree == 1) prefetch_degree=2;
-  			else if(prefetch_degree == 2) prefetch_degree=4;
+  			//if(prefetch_degree == 1) prefetch_degree=2;
+  			//else if(prefetch_degree == 2) prefetch_degree=4;
   			found_degree = true;
   		}
-  	//	printf("degree loop\n");
+ 
   }
   
-  if(!found_degree){
+  if(!found_degree && !cache_hit){
+	penalizer_rate = 0;
+  } else if(!found_degree && cache_hit) {
+  	//penalizer_rate = 0;
+  } else if(found_degree && !cache_hit){
   	++penalizer_rate;
   	if(penalizer_rate == PENALIZER_MAX_RATE){
   		if(prefetch_degree == 4) prefetch_degree=2;
   		else if(prefetch_degree == 2) prefetch_degree=1;
   		penalizer_rate = 0;
   	}
-  } else {
+  } else if(found_degree && cache_hit)  {
+    if(prefetch_degree == 1) prefetch_degree=2;
+  	else if(prefetch_degree == 2) prefetch_degree=4;
   	penalizer_rate = 0;
   }
   //////////////////////////

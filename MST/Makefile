@@ -1,6 +1,6 @@
 
 CC=gcc
-#MACROS= -DINSTRUMENTATION
+MACROS= -DINSTRUMENTATION
 CFLAGS= -static -Wall -g -std=gnu11 $(MACROS)
 SRC=$(shell find . -name "*.c")
 INCLUDE= -I../dpc2sim/inc
