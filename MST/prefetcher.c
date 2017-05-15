@@ -91,6 +91,11 @@ void l2_prefetcher_initialize(int cpu_num)
   }
 }
 
+#define MAX_LENGTH 20
+unsigned long long saturated_add(unsigned long long a, unsigned long long b, unsigned long long MAX){
+	return a+b>MAX ? MAX : a+b;
+}
+
 long long int last_stride = 0;
 unsigned int total_failed_misses = 0;
 // This function is called once for each Mid Level Cache read, and is the entry point for participants' prefetching algorithms.
@@ -146,7 +151,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 				if(hbf.sl[ii].stride == stride && hbf.sl[ii].length > 0 && hbf.sl[ii].stride > 0){
 					
 					new_hfield.sl[ii].stride = stride;
-					new_hfield.sl[ii].length = hbf.sl[ii].length + 1;
+					new_hfield.sl[ii].length = saturated_add(hbf.sl[ii].length, 1, MAX_LENGTH);
 					found = true;
 				}
 			}
@@ -189,7 +194,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 			}
 		}
 
-	  if(longest_length < length){
+	  if(longest_length < length  || (longest_length == MAX_LENGTH && longest_length == length)){
 			longest_length = length;
 			longest_stride = stride;
 		}
@@ -203,7 +208,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 	  	} else {
 	  			for (unsigned int i = 1; i <= prefetch_degree; i++) {
 						L2_PREFETCH_LINE(cpu_num,addr,addr+CACHE_LINE_SIZE*longest_stride*i,FILL_L2);
-						add_degree_entry(((unsigned long long int)(addr+CACHE_LINE_SIZE*longest_stride*stride*i)) >> CACHE_EXP);
+						add_degree_entry(((unsigned long long int)(addr+CACHE_LINE_SIZE*longest_stride*i)) >> CACHE_EXP);
 					}
 	  	}
 
